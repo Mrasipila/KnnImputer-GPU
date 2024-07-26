@@ -12,7 +12,7 @@ Simple tool That implement KNN Imputation for GPUs
 python KnnImputer.py -h
 usage: KnnImputer.py [-h] -file FILE [-n_neigh N_NEIGH]
 
-Split Coco annotation file and image file into training and test set
+KNN Imputer for GPU
 
 optional arguments:
   -h, --help        show this help message and exit
