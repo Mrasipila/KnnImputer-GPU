@@ -2,7 +2,7 @@ import argparse
 import pandas 
 import cupy as cp
 
-parser = argparse.ArgumentParser(description='Split Coco annotation file and image file into training and test set') 
+parser = argparse.ArgumentParser(description='Knn Imputer for GPU') 
 parser.add_argument('-file',type=str,required=True,dest="file", help="Name of the file to be imputed")
 parser.add_argument('-n_neigh',type=str,required=False,dest="n_neigh", help="Number of neighbors in Knn")
 
