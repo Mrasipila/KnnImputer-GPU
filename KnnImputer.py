@@ -14,53 +14,73 @@ def KnnImputer(df,n_neigh=5):
     gridSize = int((len(df)+blockSize-1)/blockSize)
     dist_kernel = cp.RawKernel(r'''
     extern "C" __global__
-    void knn_impute(float* dataset, float* distances, int num_feat, int *indices, int n_neigh) {
-        int gti = blockDim.x * blockIdx.x + threadIdx.x;
-        for(int k = 0 ; k < num_feat; k++){ 
-            if ((dataset[gti * num_feat + k]!=dataset[gti * num_feat + k])){ // check if cell is nan or not
-                int current_nan_cell = gti * num_feat + k;
-                int current_nan_col = k;
-                float dist = 0;
-                for (int i = 0 ; i < num_feat ; i++) {
-                    if((dataset[gti * num_feat + i]!=dataset[gti * num_feat + i]) || (dataset[current_nan_cell] != dataset[current_nan_cell])){
-                        continue;
-                    } else { 
-                        dist = dataset[gti * num_feat + i] - dataset[current_nan_cell];
-                        dist *= dist;
+    void knn_impute(float* dataset, float* distances, int num_feat, int* indices, int num_rows, int n_neigh) {
+        int gti = blockIdx.x * blockDim.x + threadIdx.x;
+
+        if (gti >= num_rows) return;
+
+        for (int k = 0; k < num_feat; k++) {
+            if (isnan(dataset[gti * num_feat + k])) { // check if cell is NaN
+
+                // Initialize distances and indices
+                for (int i = 0; i < num_rows; i++) {
+                    indices[i] = i;
+                    distances[i] = 99999.0f; // Initialize with a large value
+                }
+
+                // Compute distances to other rows
+                for (int i = 0; i < num_rows; i++) {
+                    if (i == gti) continue; // Skip self
+                    float dist = 0.0f;
+                    bool has_valid_data = false;
+                    for (int j = 0; j < num_feat; j++) {
+                        if (j == k) continue; // Skip the NaN feature itself
+                        float val1 = dataset[gti * num_feat + j];
+                        float val2 = dataset[i * num_feat + j];
+                        if (!isnan(val1) && !isnan(val2)) {
+                            float diff = val1 - val2;
+                            dist += diff * diff;
+                            has_valid_data = true;
+                        }
+                    }
+                    if (has_valid_data) {
+                        distances[i] = sqrtf(dist);
                     }
                 }
-                distances[gti] = sqrtf(dist);
-                indices[gti] = gti;
-                for (int j = 0; j < num_feat; j++) {
-                    for (int l = j + 1; l < num_feat; l++) {
-                        if (distances[j] > distances[l]) {
-                            // Swap distances
-                            float tempDist = distances[j];
-                            distances[j] = distances[l];
-                            distances[l] = tempDist;
 
-                            // Swap indices
-                            int tempIdx = indices[j];
-                            indices[j] = indices[l];
-                            indices[l] = tempIdx;
+                // Sort the distances and indices based on distances
+                for (int i = 0; i < num_rows - 1; i++) {
+                    for (int j = i + 1; j < num_rows; j++) {
+                        if (distances[j] < distances[i]) {
+                            float tempDist = distances[i];
+                            distances[i] = distances[j];
+                            distances[j] = tempDist;
+
+                            int tempIdx = indices[i];
+                            indices[i] = indices[j];
+                            indices[j] = tempIdx;
                         }
                     }
                 }
-                // Calculate mean of nearest neighbors
+
+                // Calculate the mean of the nearest neighbors for imputation
                 float mean = 0.0f;
                 int count = 0;
-                for (int j = 0; j < n_neigh; j++) {
-                    if (!isnan(dataset[indices[j] * num_feat + current_nan_col])) {
-                        mean += dataset[indices[j] * num_feat + current_nan_col];
+                for (int i = 0; i < num_rows && count < n_neigh; i++) {
+                    int neighbor_idx = indices[i];
+                    if (neighbor_idx == gti) continue; // Skip the NaN row itself
+                    float neighbor_val = dataset[neighbor_idx * num_feat + k];
+                    if (!isnan(neighbor_val)) {
+                        mean += neighbor_val;
                         count++;
                     }
                 }
 
                 if (count > 0) {
                     mean /= count;
-                    dataset[current_nan_cell] = mean;
+                    dataset[gti * num_feat + k] = mean; // Impute the NaN value
                 } else {
-                    // If no valid neighbors found, handle the case (e.g., leave NaN or set to a default value)
+                    dataset[gti * num_feat + k] = 0.0f; // Set to zero as default if no valid neighbors found
                 }
             }
         }
