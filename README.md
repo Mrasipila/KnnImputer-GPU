@@ -1,3 +1,6 @@
+just edited it from my phone so it is untested for now
+
+
 Simple tool That implement KNN Imputation for GPUs
 
 ## Dependencies
