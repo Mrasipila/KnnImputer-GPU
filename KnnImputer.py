@@ -14,7 +14,7 @@ def KnnImputer(df,n_neigh=5):
     gridSize = int((len(df)+blockSize-1)/blockSize)
     dist_kernel = cp.RawKernel(r'''
     extern "C" __global__
-    void knn_impute(float* dataset, float* distances, int num_feat, int* indices, int num_rows, int n_neigh) {
+    void knn_impute(float* dataset, float* distances, int num_feat, int* indices, int num_rows, int n_neigh, int** nan_col,int num_nan) {
         int gti = blockIdx.x * blockDim.x + threadIdx.x;
 
         if (gti >= num_rows) return;
@@ -27,6 +27,7 @@ def KnnImputer(df,n_neigh=5):
                 }
 
                 // Compute distances to other rows
+                 int cpt = 0;
                 for (int k = 0; k < num_rows; k++) {
                     if (i == gti) continue; // Skip self
                     float dist = 0.0f;
@@ -39,6 +40,11 @@ def KnnImputer(df,n_neigh=5):
                             float diff = val1 - val2;
                             dist += diff * diff;
                             has_valid_data = true;
+                        }
+                        if (isnan(val2)) {
+                            nan_col[cpt][0] = j;
+                            nan_col[cpt][1] = k;
+                            cpt++;
                         }
                     }
                     if (has_valid_data) {
@@ -77,7 +83,7 @@ def KnnImputer(df,n_neigh=5):
                 }
                 int ty = threadIdx.y;
                 if (ty < n_neigh){
-                    for (int i=0; i < num_rows; i++) {
+                    for (int i=0; i < num_nan; i++) {
                         indices[ty]
                     }
                 }
@@ -95,7 +101,8 @@ def KnnImputer(df,n_neigh=5):
     dataset = cp.asarray(df.to_numpy().flatten()) # we use 1D array to facilitate the prralelization
     distances = cp.array(([99999]*len(df)), dtype=cp.float32) # we setup an array of inf so that the distance of nan feature is not zero, zero means it will be first we will pick the closest points to query
     indices = cp.zeros(len(df), dtype=cp.float32)
-    dist_kernel((blockSize,),(gridSize,),(dataset,distances,len(df.iloc[0]),indices,n_neigh))
+    nan_col = cp.array(([0,0]*cp.count_nonzero(cp.isnan(dataset)))),dtype=cp.int32)
+    dist_kernel((blockSize,),(gridSize,),(dataset,distances,len(df.iloc[0]),indices,n_neigh,nan_col,cp.count_nonzero(cp.isnan(dataset))))
     return dataset
 
 df = pd.read_csv(str(args.file))
