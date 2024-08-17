@@ -18,8 +18,6 @@ def KnnImputer(df,n_neigh=5):
         int gti = blockIdx.x * blockDim.x + threadIdx.x;
 
         if (gti >= num_rows) return;
-
-        for (int k = 0; k < num_feat; k++) {
             if (isnan(dataset[gti * num_feat + k])) { // check if cell is NaN
 
                 // Initialize distances and indices
@@ -29,14 +27,14 @@ def KnnImputer(df,n_neigh=5):
                 }
 
                 // Compute distances to other rows
-                for (int i = 0; i < num_rows; i++) {
+                for (int k = 0; k < num_rows; k++) {
                     if (i == gti) continue; // Skip self
                     float dist = 0.0f;
                     bool has_valid_data = false;
                     for (int j = 0; j < num_feat; j++) {
                         if (j == k) continue; // Skip the NaN feature itself
                         float val1 = dataset[gti * num_feat + j];
-                        float val2 = dataset[i * num_feat + j];
+                        float val2 = dataset[k * num_feat + j];
                         if (!isnan(val1) && !isnan(val2)) {
                             float diff = val1 - val2;
                             dist += diff * diff;
@@ -66,13 +64,21 @@ def KnnImputer(df,n_neigh=5):
                 // Calculate the mean of the nearest neighbors for imputation
                 float mean = 0.0f;
                 int count = 0;
-                for (int i = 0; i < num_rows && count < n_neigh; i++) {
-                    int neighbor_idx = indices[i];
-                    if (neighbor_idx == gti) continue; // Skip the NaN row itself
-                    float neighbor_val = dataset[neighbor_idx * num_feat + k];
-                    if (!isnan(neighbor_val)) {
-                        mean += neighbor_val;
-                        count++;
+                for (int i = 0; i < num_rows; i++) {
+                    for (int j = 0; j < n_neigh; j++) {
+                        int neighbor_idx = indices[i];
+                        if (neighbor_idx == gti) continue; // Skip the NaN row itself
+                        float neighbor_val = dataset[neighbor_idx * num_feat + k];
+                        if (!isnan(neighbor_val)) {
+                            mean += neighbor_val;
+                            count++;
+                        }
+                    }
+                }
+                int ty = threadIdx.y;
+                if (ty < n_neigh){
+                    for (int i=0; i < num_rows; i++) {
+                        indices[ty]
                     }
                 }
 
